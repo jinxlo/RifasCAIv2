@@ -1,13 +1,13 @@
 import React, { useState, useEffect } from 'react';
 import axios from 'axios';
-import { useSocket } from '../../contexts/SocketContext'; // Updated to use the correct context
+import { useSocket } from '../../contexts/SocketContext';
 import '../../assets/styles/adminSections/ActiveRaffles.css';
 
 const ActiveRaffles = () => {
   const [raffles, setRaffles] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
-  const socket = useSocket(); // Get the socket from the context
+  const socket = useSocket();
 
   useEffect(() => {
     const fetchRaffles = async () => {
@@ -18,48 +18,88 @@ const ActiveRaffles = () => {
             Authorization: `Bearer ${token}`
           }
         });
-        setRaffles(response.data);
+        
+        // Ensure we're setting an array of raffles
+        if (response.data && response.data.raffles) {
+          setRaffles(Array.isArray(response.data.raffles) ? response.data.raffles : []);
+        } else {
+          setRaffles([]);
+        }
+        
         setLoading(false);
       } catch (error) {
         console.error('Error fetching active raffles:', error);
-        setError('Error loading active raffles');
+        setError(error.response?.data?.message || 'Error loading active raffles');
         setLoading(false);
       }
     };
 
     fetchRaffles();
 
-    // Set up socket listeners for real-time raffle updates
-    socket.on('raffle_created', (data) => {
-      setRaffles((prevRaffles) => [...prevRaffles, data]);
-    });
+    // Socket event handlers
+    const handleRaffleCreated = (data) => {
+      console.log('New raffle created:', data);
+      setRaffles((prevRaffles) => {
+        // Ensure prevRaffles is an array
+        const currentRaffles = Array.isArray(prevRaffles) ? prevRaffles : [];
+        return [...currentRaffles, data];
+      });
+    };
 
-    socket.on('raffle_updated', (data) => {
-      setRaffles((prevRaffles) => 
-        prevRaffles.map(raffle => raffle._id === data._id ? data : raffle)
-      );
-    });
+    const handleRaffleUpdated = (data) => {
+      console.log('Raffle updated:', data);
+      setRaffles((prevRaffles) => {
+        // Ensure prevRaffles is an array
+        const currentRaffles = Array.isArray(prevRaffles) ? prevRaffles : [];
+        return currentRaffles.map(raffle => 
+          raffle._id === data._id ? data : raffle
+        );
+      });
+    };
 
-    // Cleanup on component unmount
+    // Set up socket listeners
+    socket.on('raffle_created', handleRaffleCreated);
+    socket.on('raffle_updated', handleRaffleUpdated);
+
+    // Cleanup
     return () => {
-      socket.off('raffle_created');
-      socket.off('raffle_updated');
+      socket.off('raffle_created', handleRaffleCreated);
+      socket.off('raffle_updated', handleRaffleUpdated);
     };
   }, [socket]);
 
+  const formatCurrency = (amount) => {
+    return new Intl.NumberFormat('en-US', {
+      style: 'currency',
+      currency: 'USD'
+    }).format(amount);
+  };
+
   if (loading) {
     return (
-      <div className="loading-container">
-        <div className="loading-spinner"></div>
-        <p>Loading active raffles...</p>
+      <div className="active-raffles">
+        <h2 className="page-title">Active Raffles</h2>
+        <div className="loading-container">
+          <div className="loading-spinner"></div>
+          <p>Loading active raffles...</p>
+        </div>
       </div>
     );
   }
 
   if (error) {
     return (
-      <div className="error-container">
-        <p className="error-message">{error}</p>
+      <div className="active-raffles">
+        <h2 className="page-title">Active Raffles</h2>
+        <div className="error-container">
+          <p className="error-message">{error}</p>
+          <button 
+            className="retry-button"
+            onClick={() => window.location.reload()}
+          >
+            Retry
+          </button>
+        </div>
       </div>
     );
   }
@@ -68,13 +108,15 @@ const ActiveRaffles = () => {
     <div className="active-raffles">
       <h2 className="page-title">Active Raffles</h2>
       <div className="raffles-grid">
-        {raffles.length === 0 ? (
-          <p className="no-raffles">No active raffles found</p>
+        {!Array.isArray(raffles) || raffles.length === 0 ? (
+          <div className="no-raffles">
+            <p>No active raffles found</p>
+          </div>
         ) : (
           raffles.map((raffle) => (
             <div key={raffle._id} className="raffle-card">
               <img
-                src={raffle.productImage}
+                src={`http://localhost:5000${raffle.productImage}`}
                 alt={raffle.productName}
                 className="raffle-image"
                 onError={(e) => {
@@ -88,7 +130,7 @@ const ActiveRaffles = () => {
                 <div className="stats">
                   <div className="stat-item">
                     <span className="label">Price:</span>
-                    <span className="value">${raffle.price}</span>
+                    <span className="value">{formatCurrency(raffle.price)}</span>
                   </div>
                   <div className="stat-item">
                     <span className="label">Total Tickets:</span>
@@ -96,16 +138,26 @@ const ActiveRaffles = () => {
                   </div>
                   <div className="stat-item">
                     <span className="label">Sold:</span>
-                    <span className="value">{raffle.soldTickets}</span>
+                    <span className="value">{raffle.soldTickets || 0}</span>
                   </div>
                 </div>
-                <div className="progress-bar">
-                  <div 
-                    className="progress"
-                    style={{ 
-                      width: `${(raffle.soldTickets / raffle.totalTickets) * 100}%` 
-                    }}
-                  />
+                <div className="progress-container">
+                  <div className="progress-bar">
+                    <div 
+                      className="progress"
+                      style={{ 
+                        width: `${((raffle.soldTickets || 0) / raffle.totalTickets) * 100}%` 
+                      }}
+                    />
+                  </div>
+                  <span className="progress-text">
+                    {Math.round(((raffle.soldTickets || 0) / raffle.totalTickets) * 100)}% Sold
+                  </span>
+                </div>
+                <div className="raffle-status">
+                  <span className={`status-badge ${raffle.active ? 'active' : 'inactive'}`}>
+                    {raffle.active ? 'Active' : 'Inactive'}
+                  </span>
                 </div>
               </div>
             </div>

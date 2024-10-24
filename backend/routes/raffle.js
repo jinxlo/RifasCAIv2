@@ -1,9 +1,39 @@
 const express = require('express');
 const router = express.Router();
 const mongoose = require('mongoose');
+const multer = require('multer');
+const path = require('path');
+const fs = require('fs');
 const Raffle = require('../models/Raffle');
 const Ticket = require('../models/Ticket');
 const auth = require('../middleware/auth');
+
+// Configure multer for raffle image uploads
+const storage = multer.diskStorage({
+  destination: function (req, file, cb) {
+    const uploadDir = path.join(__dirname, '..', 'uploads', 'raffles');
+    if (!fs.existsSync(uploadDir)) {
+      fs.mkdirSync(uploadDir, { recursive: true });
+    }
+    cb(null, uploadDir);
+  },
+  filename: function (req, file, cb) {
+    const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
+    cb(null, 'raffle-' + uniqueSuffix + path.extname(file.originalname));
+  }
+});
+
+const upload = multer({
+  storage: storage,
+  limits: { fileSize: 5 * 1024 * 1024 }, // 5MB limit
+  fileFilter: (req, file, cb) => {
+    if (file.mimetype.startsWith('image/')) {
+      cb(null, true);
+    } else {
+      cb(new Error('Only image files are allowed'));
+    }
+  }
+});
 
 // Get all raffles (admin only)
 router.get('/all', auth.isAdmin, async (req, res) => {
@@ -60,79 +90,87 @@ router.get('/', async (req, res) => {
 });
 
 // Create new raffle (admin only)
-router.post('/create', auth.isAdmin, async (req, res) => {
+router.post('/create', auth.isAdmin, upload.single('productImage'), async (req, res) => {
   const session = await mongoose.startSession();
   session.startTransaction();
 
   try {
-    // Validate required fields
-    const requiredFields = ['productName', 'productImage', 'price', 'totalTickets', 'description'];
-    const missingFields = requiredFields.filter(field => !req.body[field]);
+    // Validate input
+    const { productName, description, price, totalTickets } = req.body;
     
-    if (missingFields.length > 0) {
-      return res.status(400).json({
-        message: `Missing required fields: ${missingFields.join(', ')}`,
-        code: 'MISSING_FIELDS'
-      });
+    if (!productName || !description || !price || !totalTickets || !req.file) {
+      throw new Error('All fields including image are required');
     }
 
     // Validate numeric fields
-    if (isNaN(req.body.price) || req.body.price <= 0) {
-      return res.status(400).json({
-        message: 'Price must be a positive number',
-        code: 'INVALID_PRICE'
-      });
+    const parsedPrice = parseFloat(price);
+    const parsedTotalTickets = parseInt(totalTickets);
+
+    if (isNaN(parsedPrice) || parsedPrice <= 0) {
+      throw new Error('Price must be a positive number');
     }
 
-    if (isNaN(req.body.totalTickets) || req.body.totalTickets <= 0) {
-      return res.status(400).json({
-        message: 'Total tickets must be a positive number',
-        code: 'INVALID_TICKET_COUNT'
-      });
+    if (isNaN(parsedTotalTickets) || parsedTotalTickets <= 0) {
+      throw new Error('Total tickets must be a positive number');
     }
 
-    // Deactivate all other raffles
+    // Deactivate existing raffles
     await Raffle.updateMany({}, { active: false }, { session });
 
     // Create new raffle
     const raffle = new Raffle({
-      productName: req.body.productName,
-      description: req.body.description,
-      productImage: req.body.productImage,
-      price: parseFloat(req.body.price),
-      totalTickets: parseInt(req.body.totalTickets),
+      productName,
+      description,
+      productImage: `/uploads/raffles/${req.file.filename}`,
+      price: parsedPrice,
+      totalTickets: parsedTotalTickets,
       active: true,
       soldTickets: 0,
       reservedTickets: 0,
-      createdBy: req.user._id // Assuming user ID is available from auth middleware
+      createdBy: req.user._id
     });
 
     await raffle.save({ session });
 
-    // Create tickets for the raffle
-    const tickets = Array.from({ length: raffle.totalTickets }, (_, index) => ({
-      raffleId: raffle._id,
-      number: index + 1,
-      status: 'available'
+    // Create tickets with proper error handling
+    const ticketBulkOps = Array.from({ length: parsedTotalTickets }, (_, index) => ({
+      insertOne: {
+        document: {
+          raffleId: raffle._id,
+          ticketNumber: index + 1,
+          status: 'available'
+        }
+      }
     }));
 
-    await Ticket.insertMany(tickets, { session });
+    await Ticket.bulkWrite(ticketBulkOps, { session });
 
     await session.commitTransaction();
 
-    // Emit socket event for real-time updates
-    req.io.emit('raffle_created', raffle);
+    // Emit socket event
+    if (req.io) {
+      req.io.emit('raffle_created', raffle);
+    }
 
     res.status(201).json({
       message: 'Raffle created successfully',
       raffle
     });
+
   } catch (error) {
     await session.abortTransaction();
+
+    // Clean up uploaded file if there was an error
+    if (req.file) {
+      fs.unlink(req.file.path, (err) => {
+        if (err) console.error('Error deleting file:', err);
+      });
+    }
+
     console.error('Error creating raffle:', error);
-    res.status(500).json({ 
+    res.status(500).json({
       message: 'Error creating raffle',
-      error: process.env.NODE_ENV === 'development' ? error.message : undefined
+      error: process.env.NODE_ENV === 'development' ? error.message : 'Internal server error'
     });
   } finally {
     session.endSession();
@@ -140,16 +178,8 @@ router.post('/create', auth.isAdmin, async (req, res) => {
 });
 
 // Update raffle (admin only)
-router.put('/:id', auth.isAdmin, async (req, res) => {
+router.put('/:id', auth.isAdmin, upload.single('productImage'), async (req, res) => {
   try {
-    const allowedUpdates = ['productName', 'description', 'productImage', 'price', 'active'];
-    const updates = Object.keys(req.body)
-      .filter(key => allowedUpdates.includes(key))
-      .reduce((obj, key) => {
-        obj[key] = req.body[key];
-        return obj;
-      }, {});
-
     const raffle = await Raffle.findById(req.params.id);
     
     if (!raffle) {
@@ -157,6 +187,28 @@ router.put('/:id', auth.isAdmin, async (req, res) => {
         message: 'Raffle not found',
         code: 'RAFFLE_NOT_FOUND'
       });
+    }
+
+    const updates = {};
+    const allowedUpdates = ['productName', 'description', 'price', 'active'];
+    
+    // Handle regular fields
+    allowedUpdates.forEach(field => {
+      if (req.body[field] !== undefined) {
+        updates[field] = req.body[field];
+      }
+    });
+
+    // Handle image update
+    if (req.file) {
+      // Delete old image if it exists
+      if (raffle.productImage) {
+        const oldImagePath = path.join(__dirname, '..', 'public', raffle.productImage);
+        fs.unlink(oldImagePath, err => {
+          if (err && err.code !== 'ENOENT') console.error('Error deleting old image:', err);
+        });
+      }
+      updates.productImage = `/uploads/raffles/${req.file.filename}`;
     }
 
     // If activating this raffle, deactivate others
@@ -167,11 +219,14 @@ router.put('/:id', auth.isAdmin, async (req, res) => {
       );
     }
 
+    // Update the raffle
     Object.assign(raffle, updates);
     await raffle.save();
 
-    // Emit socket event for real-time updates
-    req.io.emit('raffle_updated', raffle);
+    // Emit socket event
+    if (req.io) {
+      req.io.emit('raffle_updated', raffle);
+    }
 
     res.json({
       message: 'Raffle updated successfully',
@@ -214,13 +269,23 @@ router.delete('/:id', auth.isAdmin, async (req, res) => {
     // Delete associated tickets
     await Ticket.deleteMany({ raffleId: raffle._id }, { session });
     
+    // Delete the raffle image
+    if (raffle.productImage) {
+      const imagePath = path.join(__dirname, '..', raffle.productImage);
+      fs.unlink(imagePath, err => {
+        if (err && err.code !== 'ENOENT') console.error('Error deleting raffle image:', err);
+      });
+    }
+
     // Delete the raffle
     await Raffle.findByIdAndDelete(req.params.id, { session });
 
     await session.commitTransaction();
 
-    // Emit socket event for real-time updates
-    req.io.emit('raffle_deleted', { raffleId: req.params.id });
+    // Emit socket event
+    if (req.io) {
+      req.io.emit('raffle_deleted', { raffleId: req.params.id });
+    }
 
     res.json({ 
       message: 'Raffle and associated tickets deleted successfully',

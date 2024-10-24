@@ -1,11 +1,11 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import axios from 'axios';
-import { useSocket } from '../../contexts/SocketContext'; // Updated to use the correct context
+import { useSocket } from '../../contexts/SocketContext';
 import '../../assets/styles/adminSections/CreateRaffle.css';
 
 const CreateRaffle = () => {
-  const socket = useSocket(); // Access the socket from context
+  const socket = useSocket();
   const navigate = useNavigate();
   
   const [formData, setFormData] = useState({
@@ -13,12 +13,14 @@ const CreateRaffle = () => {
     description: '',
     price: '',
     totalTickets: '1000',
-    productImage: ''
+    productImage: null // Changed to null for file upload
   });
 
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
   const [success, setSuccess] = useState(false);
+  const [imagePreview, setImagePreview] = useState(null);
+  
   const [validation, setValidation] = useState({
     productName: true,
     description: true,
@@ -27,27 +29,25 @@ const CreateRaffle = () => {
     productImage: true
   });
 
-  // Validation rules
   const validateForm = () => {
     const newValidation = {
       productName: formData.productName.length >= 3,
       description: formData.description.length >= 10,
       price: parseFloat(formData.price) > 0,
       totalTickets: parseInt(formData.totalTickets) >= 10,
-      productImage: formData.productImage.length > 0
+      productImage: formData.productImage !== null
     };
 
     setValidation(newValidation);
     return Object.values(newValidation).every(Boolean);
   };
 
-  // Error messages
   const errorMessages = {
     productName: 'El nombre debe tener al menos 3 caracteres',
     description: 'La descripción debe tener al menos 10 caracteres',
     price: 'El precio debe ser mayor a 0',
     totalTickets: 'Debe haber al menos 10 tickets',
-    productImage: 'La URL de la imagen es requerida'
+    productImage: 'La imagen es requerida'
   };
 
   const handleInputChange = (e) => {
@@ -61,6 +61,35 @@ const CreateRaffle = () => {
       ...prev,
       [name]: true
     }));
+  };
+
+  const handleImageChange = (e) => {
+    const file = e.target.files[0];
+    if (file) {
+      if (!file.type.startsWith('image/')) {
+        setError('Please select an image file');
+        return;
+      }
+
+      if (file.size > 5 * 1024 * 1024) { // 5MB limit
+        setError('Image size should be less than 5MB');
+        return;
+      }
+
+      setFormData(prev => ({
+        ...prev,
+        productImage: file
+      }));
+
+      // Create preview URL
+      const previewUrl = URL.createObjectURL(file);
+      setImagePreview(previewUrl);
+      
+      setValidation(prev => ({
+        ...prev,
+        productImage: true
+      }));
+    }
   };
 
   const handleSubmit = async (e) => {
@@ -78,28 +107,25 @@ const CreateRaffle = () => {
     try {
       const token = localStorage.getItem('token');
       
-      // Format data for API
-      const raffleData = {
-        productName: formData.productName,
-        description: formData.description,
-        price: parseFloat(formData.price),
-        totalTickets: parseInt(formData.totalTickets),
-        productImage: formData.productImage
-      };
+      // Create FormData object for multipart/form-data
+      const submitFormData = new FormData();
+      submitFormData.append('productName', formData.productName);
+      submitFormData.append('description', formData.description);
+      submitFormData.append('price', formData.price);
+      submitFormData.append('totalTickets', formData.totalTickets);
+      submitFormData.append('productImage', formData.productImage);
 
-      // Create raffle
       const response = await axios.post(
         'http://localhost:5000/api/raffle/create',
-        raffleData,
+        submitFormData,
         {
           headers: {
             'Authorization': `Bearer ${token}`,
-            'Content-Type': 'application/json'
+            'Content-Type': 'multipart/form-data'
           }
         }
       );
 
-      // Emit socket event
       socket.emit('raffle_created', response.data);
 
       setSuccess(true);
@@ -108,10 +134,10 @@ const CreateRaffle = () => {
         description: '',
         price: '',
         totalTickets: '1000',
-        productImage: ''
+        productImage: null
       });
+      setImagePreview(null);
 
-      // Show success message and redirect
       setTimeout(() => {
         navigate('/admin/active-raffles');
       }, 2000);
@@ -132,17 +158,8 @@ const CreateRaffle = () => {
       <h2 className="page-title">Crear Nueva Rifa</h2>
       <p className="page-description">Configurar un nuevo evento de rifa</p>
 
-      {error && (
-        <div className="error-message">
-          {error}
-        </div>
-      )}
-
-      {success && (
-        <div className="success-message">
-          ¡Rifa creada exitosamente! Redirigiendo...
-        </div>
-      )}
+      {error && <div className="error-message">{error}</div>}
+      {success && <div className="success-message">¡Rifa creada exitosamente! Redirigiendo...</div>}
 
       <div className="form-container">
         <form onSubmit={handleSubmit} className="raffle-form">
@@ -219,14 +236,13 @@ const CreateRaffle = () => {
           </div>
 
           <div className="form-group">
-            <label htmlFor="productImage">URL de la Imagen del Producto</label>
+            <label htmlFor="productImage">Imagen del Producto</label>
             <input
-              type="text"
+              type="file"
               id="productImage"
               name="productImage"
-              placeholder="Ingrese la URL de la imagen"
-              value={formData.productImage}
-              onChange={handleInputChange}
+              accept="image/*"
+              onChange={handleImageChange}
               className={!validation.productImage ? 'invalid' : ''}
               required
             />
@@ -235,10 +251,10 @@ const CreateRaffle = () => {
             )}
           </div>
 
-          {formData.productImage && (
+          {imagePreview && (
             <div className="image-preview">
               <img
-                src={formData.productImage}
+                src={imagePreview}
                 alt="Vista previa"
                 onError={(e) => {
                   e.target.onerror = null;

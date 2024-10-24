@@ -29,16 +29,18 @@ const app = express();
 // -----------------------
 // File Upload Configuration
 // -----------------------
+// Create upload directories if they don't exist
 const uploadDir = path.join(__dirname, 'uploads');
 const proofDir = path.join(uploadDir, 'proofs');
+const raffleImagesDir = path.join(uploadDir, 'raffles');
 
-if (!fs.existsSync(uploadDir)) {
-  fs.mkdirSync(uploadDir);
-}
-if (!fs.existsSync(proofDir)) {
-  fs.mkdirSync(proofDir);
-}
+[uploadDir, proofDir, raffleImagesDir].forEach(dir => {
+  if (!fs.existsSync(dir)) {
+    fs.mkdirSync(dir, { recursive: true });
+  }
+});
 
+// Configure multer for proof of payment uploads
 const storage = multer.diskStorage({
   destination: function (req, file, cb) {
     cb(null, proofDir);
@@ -68,8 +70,6 @@ const upload = multer({
 // -----------------------
 // Middleware Configuration
 // -----------------------
-
-// Updated CORS Configuration
 const corsOptions = {
   origin: process.env.CLIENT_URL || 'http://localhost:3000',
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
@@ -79,23 +79,23 @@ const corsOptions = {
 };
 
 app.use(cors(corsOptions));
-
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
+// Request logging middleware
 app.use((req, res, next) => {
   console.log(`${new Date().toISOString()} - ${req.method} ${req.path}`);
   next();
 });
 
+// Serve static files from uploads directory
+app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
+
 // -----------------------
-// Initialize HTTP Server
+// Initialize HTTP Server & Socket.IO
 // -----------------------
 const server = http.createServer(app);
 
-// -----------------------
-// Socket.IO Configuration
-// -----------------------
 const io = new Server(server, {
   cors: {
     origin: process.env.CLIENT_URL || 'http://localhost:3000',
@@ -108,32 +108,28 @@ const io = new Server(server, {
   pingInterval: 25000
 });
 
-// Socket authentication middleware with more leniency in development
+// Socket.IO authentication middleware
 io.use(async (socket, next) => {
   try {
     const token = socket.handshake.auth.token || 
                   socket.handshake.headers.authorization || 
                   socket.handshake.query.token;
     
-    if (!token) {
-      // Allow connections without tokens in development mode
-      if (process.env.NODE_ENV === 'development') {
-        return next();
-      }
+    if (!token && process.env.NODE_ENV !== 'development') {
       return next(new Error('Authentication error'));
     }
 
-    try {
-      const decoded = jwt.verify(token, process.env.JWT_SECRET);
-      socket.user = decoded;
-      if (decoded.isAdmin) {
-        socket.join('admin-room');
-      }
-    } catch (error) {
-      if (process.env.NODE_ENV === 'development') {
-        console.warn('Invalid token, but allowing connection in development mode');
-      } else {
-        return next(new Error('Invalid token'));
+    if (token) {
+      try {
+        const decoded = jwt.verify(token, process.env.JWT_SECRET);
+        socket.user = decoded;
+        if (decoded.isAdmin) {
+          socket.join('admin-room');
+        }
+      } catch (error) {
+        if (process.env.NODE_ENV !== 'development') {
+          return next(new Error('Invalid token'));
+        }
       }
     }
     
@@ -144,15 +140,13 @@ io.use(async (socket, next) => {
   }
 });
 
-// Debug logging for socket events
+// Socket.IO connection handler
 io.on('connection', (socket) => {
   console.log('Client connected:', socket.id, 'User:', socket.user?.email);
 
-  const originalEmit = socket.emit;
-  socket.emit = function() {
-    console.log('Socket Event Emitted:', arguments[0], JSON.stringify(Array.prototype.slice.call(arguments, 1)));
-    originalEmit.apply(socket, arguments);
-  };
+  if (socket.user) {
+    socket.join(`user-${socket.user.userId}`);
+  }
 
   socket.on('disconnect', (reason) => {
     console.log('Client disconnected:', socket.id, 'Reason:', reason);
@@ -165,58 +159,94 @@ app.use((req, res, next) => {
   next();
 });
 
-// Serve uploaded files
-app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
-
 // -----------------------
 // Routes Configuration
 // -----------------------
 app.use('/api/auth', authRoutes);
 app.use('/api/payments', paymentRoutes(upload, io));
 app.use('/api/tickets', ticketsRoutes(io));
-
-// Updated route configuration for raffle with error handling
-app.use('/api/raffle', (req, res, next) => {
-  console.log('Raffle route accessed:', req.method, req.path);
-  next();
-}, raffleRoutes);
-
-app.use('/api/raffle/*', (err, req, res, next) => {
-  console.error('Raffle route error:', err);
-  res.status(err.status || 500).json({
-    message: err.message || 'Internal server error',
-    error: process.env.NODE_ENV === 'development' ? err : {}
-  });
-});
-
+app.use('/api/raffle', raffleRoutes);
 app.use('/api/exchange-rates', exchangeRatesRoutes);
 
-// Health check route
-app.get('/health', (req, res) => {
+// Add test endpoint
+app.get('/api/test', (req, res) => {
   res.json({
-    status: 'healthy',
+    message: 'Server is running correctly',
     timestamp: new Date(),
-    uptime: process.uptime()
+    env: process.env.NODE_ENV
   });
 });
 
 // -----------------------
-// Error Handler Middleware
+// Cleanup Function
 // -----------------------
-app.use((err, req, res, next) => {
-  console.error('Error:', err);
-  const statusCode = err.statusCode || 500;
-  const message = err.message || 'Internal server error';
-  
-  res.status(statusCode).json({
-    error: message,
-    stack: process.env.NODE_ENV === 'development' ? err.stack : undefined
-  });
-});
+async function cleanupDatabase() {
+  try {
+    console.log('Cleaning up database...');
+    
+    // Drop collections
+    const collections = ['tickets', 'raffles'];
+    for (const collectionName of collections) {
+      try {
+        await mongoose.connection.db.collection(collectionName).drop();
+        console.log(`Dropped collection: ${collectionName}`);
+      } catch (err) {
+        if (err.code !== 26) { // 26 is collection doesn't exist
+          console.error(`Error dropping collection ${collectionName}:`, err);
+        }
+      }
+    }
+    
+    // Drop indexes
+    try {
+      await mongoose.model('Ticket').collection.dropIndexes();
+      console.log('Dropped all indexes on Ticket collection');
+    } catch (err) {
+      if (err.code !== 26) {
+        console.error('Error dropping indexes:', err);
+      }
+    }
+    
+    console.log('Database cleanup completed');
+  } catch (error) {
+    console.error('Error during database cleanup:', error);
+  }
+}
+
+// -----------------------
+// Server Startup
+// -----------------------
+const startServer = async () => {
+  try {
+    await mongoose.connect(process.env.MONGODB_URI, {
+      serverSelectionTimeoutMS: 5000,
+      socketTimeoutMS: 45000,
+    });
+    console.log('Connected to MongoDB');
+
+    // Cleanup database in development
+    if (process.env.NODE_ENV === 'development') {
+      await cleanupDatabase();
+    }
+
+    const PORT = process.env.PORT || 5000;
+    server.listen(PORT, () => {
+      console.log(`Server running on port ${PORT}`);
+      console.log(`Environment: ${process.env.NODE_ENV}`);
+    });
+  } catch (error) {
+    console.error('Startup error:', error);
+    process.exit(1);
+  }
+};
+
+// Start the server
+startServer();
 
 // -----------------------
 // Scheduled Tasks
 // -----------------------
+// Task to release expired tickets
 cron.schedule('*/5 * * * *', async () => {
   const cutoff = new Date(Date.now() - 24 * 60 * 60 * 1000);
   try {
@@ -266,17 +296,10 @@ cron.schedule('*/5 * * * *', async () => {
 cron.schedule('0 0 * * *', async () => {
   try {
     const yesterday = new Date(Date.now() - 24 * 60 * 60 * 1000);
-    
     await User.updateMany(
       { resetPasswordExpires: { $lt: yesterday } },
-      { 
-        $unset: { 
-          resetPasswordToken: 1, 
-          resetPasswordExpires: 1 
-        } 
-      }
+      { $unset: { resetPasswordToken: 1, resetPasswordExpires: 1 } }
     );
-
     console.log('Daily cleanup completed');
   } catch (error) {
     console.error('Error in daily cleanup:', error);
@@ -284,40 +307,8 @@ cron.schedule('0 0 * * *', async () => {
 });
 
 // -----------------------
-// Database & Server
+// Error Handling
 // -----------------------
-const startServer = async () => {
-  try {
-    await mongoose.connect(process.env.MONGODB_URI, {
-      serverSelectionTimeoutMS: 5000,
-      socketTimeoutMS: 45000,
-    });
-    console.log('Connected to MongoDB');
-
-    const ticketCount = await Ticket.countDocuments();
-    if (ticketCount === 0) {
-      const tickets = Array.from({ length: 1000 }, (_, i) => ({
-        ticketNumber: i + 1,
-        status: 'available'
-      }));
-      await Ticket.insertMany(tickets);
-      console.log('Initialized 1000 tickets');
-    }
-
-    const PORT = process.env.PORT || 5000;
-    server.listen(PORT, () => {
-      console.log(`Server running on port ${PORT}`);
-      console.log(`Environment: ${process.env.NODE_ENV}`);
-    });
-  } catch (error) {
-    console.error('Startup error:', error);
-    process.exit(1);
-  }
-};
-
-startServer();
-
-// Handle uncaught promises and exceptions
 process.on('unhandledRejection', (error) => {
   console.error('Unhandled Rejection:', error);
 });
