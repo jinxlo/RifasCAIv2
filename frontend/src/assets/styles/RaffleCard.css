@@ -1,0 +1,95 @@
+.raffle-card {
+    background-color: #ffffff;
+    border-radius: 10px;
+    width: 80%; /* Further reduce width to 80% */
+    max-width: 350px; /* Further reduce max-width to 350px */
+    margin: 10px auto; /* Adjust margin for smaller spacing */
+    box-shadow: 0px 4px 10px rgba(0, 0, 0, 0.1);
+    text-align: center;
+    overflow: hidden;
+    padding: 10px; /* Further reduce padding */
+}
+
+.raffle-image {
+    width: 100%;
+    height: auto;
+    border-radius: 10px;
+}
+
+.raffle-name {
+    font-size: 22px; /* Further reduce font size */
+    font-weight: bold;
+    color: #1d1d1f;
+    margin-top: 15px; /* Adjust margin */
+}
+
+.raffle-description {
+    font-size: 14px; /* Further reduce font size */
+    color: #8e8e93;
+    margin: 10px 0 15px 0;
+}
+
+.raffle-info {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    margin-bottom: 15px; /* Reduce bottom margin */
+}
+
+.raffle-price,
+.raffle-tickets,
+.raffle-total-tickets {
+    font-size: 14px; /* Further reduce font size */
+    color: #333;
+    margin: 5px 0;
+}
+
+.progress-bar-container {
+    width: 100%;
+    margin: 10px 0; /* Further reduce margin */
+}
+
+.progress-bar {
+    width: 100%;
+    background-color: #e0e0e0;
+    height: 10px; /* Further reduce height */
+    border-radius: 10px;
+    overflow: hidden;
+}
+
+.progress {
+    height: 100%;
+    background-color: #6a1b9a;
+}
+
+.progress-text {
+    font-size: 12px; /* Further reduce font size */
+    color: #333;
+    margin-top: 5px; /* Reduce margin */
+}
+
+.buy-ticket-button {
+    background-color: #6a1b9a;
+    color: #fff;
+    padding: 8px 16px; /* Further adjust padding */
+    font-size: 14px; /* Further reduce font size */
+    font-weight: bold;
+    border-radius: 30px;
+    border: none;
+    cursor: pointer;
+    transition: background-color 0.3s, transform 0.2s;
+    width: 100%;
+    max-width: 200px; /* Further reduce max-width */
+    margin: 8px auto 0 auto; /* Further adjust margin */
+    display: block;
+}
+
+.buy-ticket-button:hover {
+    background-color: #4a148c;
+    transform: translateY(-4px);
+}
+
+.buy-ticket-button:disabled {
+    background-color: #ccc;
+    cursor: not-allowed;
+}

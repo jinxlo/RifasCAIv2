@@ -1,0 +1,53 @@
+.header {
+    background-color: white;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+.container {
+    max-width: 1200px;
+    margin: 0 auto;
+    padding: 0 20px;
+}
+
+.flex {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    height: 64px;
+}
+
+.flex-shrink-0 img {
+    height: 40px; /* Set a fixed height for the logo */
+    width: auto; /* Maintain aspect ratio */
+    max-width: 100px; /* Ensure the logo doesn't exceed this width */
+}
+
+.login-button {
+    background: #6a1b9a;
+    color: white;
+    border: none; /* Remove border for a cleaner look */
+    padding: 6px 12px; /* Keep reduced padding */
+    border-radius: 4px; /* Slightly reduce border radius */
+    display: flex;
+    align-items: center;
+    transition: background-color 0.3s ease, color 0.3s ease;
+    cursor: pointer;
+    font-size: 13px; /* Keep reduced font size */
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1); /* Add subtle shadow for depth */
+}
+
+.login-button:hover {
+    background-color: #4a148c;
+    color: white;
+}
+
+.login-button span {
+    margin-left: 6px; /* Keep reduced margin */
+    font-size: 13px; /* Match font size with button */
+    font-weight: 500;
+}
+
+.h-5 {
+    height: 20px;
+    width: 20px;
+}

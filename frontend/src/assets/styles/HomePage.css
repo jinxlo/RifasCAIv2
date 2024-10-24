@@ -1,0 +1,43 @@
+/* General styling */
+body {
+  margin: 0;
+  padding: 0;
+  font-family: 'Helvetica Neue', Arial, sans-serif;
+  background-color: #f4f4f4;
+  color: #333;
+}
+
+.homepage {
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
+}
+
+/* Remove the old header styling since it's handled in the Header component */
+
+/* Footer styling */
+.footer {
+  background-color: #f8f8f8;
+  padding: 20px 0;
+  text-align: center;
+  border-top: 1px solid #e0e0e0;
+  color: #888;
+  margin-top: auto;
+}
+
+/* Main Content */
+.home-container {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  flex-grow: 1;
+  padding: 20px;
+}
+
+/* Responsive Adjustments */
+@media (max-width: 768px) {
+  /* You can keep any mobile-specific adjustments */
+  .homepage-logo {
+    font-size: 20px;
+  }
+}

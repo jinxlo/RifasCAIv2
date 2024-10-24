@@ -1,0 +1,23 @@
+/* src/pages/PaymentVerificationPage.css */
+
+.payment-verification-page {
+    text-align: center;
+    padding: 50px;
+  }
+  
+  .spinner {
+    margin: 20px auto;
+    border: 8px solid #f3f3f3;
+    border-top: 8px solid #007bff;
+    border-radius: 50%;
+    width: 80px;
+    height: 80px;
+    animation: spin 1s linear infinite;
+  }
+  
+  @keyframes spin {
+    to {
+      transform: rotate(360deg);
+    }
+  }
+  

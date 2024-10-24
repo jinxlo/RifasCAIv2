@@ -1,0 +1,65 @@
+/* Unavailable number (pending payment confirmation) */
+.number-button.unavailable {
+  background-color: grey;  /* Numbers pending payment confirmation */
+  cursor: not-allowed;
+  color: white;
+}
+
+/* Purchased number (already purchased) */
+.number-button.purchased {
+  background-color: red;  /* Numbers that are already purchased */
+  cursor: not-allowed;
+  color: white;
+}
+
+/* Selected number (user selected) */
+.number-button.selected {
+  background-color: green;  /* Numbers selected by the user */
+  color: white;
+}
+
+/* Number button (default) */
+.number-button {
+  width: 50px;
+  height: 50px;
+  margin: 5px;
+  border: none;
+  border-radius: 5px;
+  cursor: pointer;
+}
+
+/* Numbers grid container */
+.numbers-grid {
+  display: flex;
+  flex-wrap: wrap;
+  max-height: calc(100vh - 120px);
+  overflow-y: auto;
+  padding: 10px;
+  justify-content: center; /* Center the grid items */
+  border: 1px solid transparent; /* Temporary border for debugging */
+  min-height: 200px; /* Ensure grid has a minimum height */
+}
+
+/* Sticky summary bar at the bottom */
+.sticky-summary {
+  position: sticky;
+  bottom: 0;
+  background-color: #f9f9f9;
+  padding: 15px;
+  border-top: 1px solid #ccc;
+  text-align: center;
+  z-index: 10; /* Ensure it stays above other content */
+}
+
+/* Responsive adjustments for mobile devices */
+@media (max-width: 600px) {
+  .number-button {
+    width: 40px; /* Adjust button size for smaller screens */
+    height: 40px;
+    margin: 3px;
+  }
+
+  .sticky-summary {
+    padding: 10px; /* Adjust padding for smaller screens */
+  }
+}
