@@ -18,12 +18,12 @@ const PendingPayments = () => {
 
     // Set up Socket.IO listeners
     socket.on('payment_confirmed', (data) => {
-      setPayments(prev => prev.filter(p => p._id !== data.paymentId));
+      setPayments((prev) => prev.filter((p) => p._id !== data.paymentId));
       setSuccess('Pago confirmado exitosamente');
     });
 
     socket.on('payment_rejected', (data) => {
-      setPayments(prev => prev.filter(p => p._id !== data.paymentId));
+      setPayments((prev) => prev.filter((p) => p._id !== data.paymentId));
       setSuccess('Pago rechazado exitosamente');
     });
 
@@ -37,12 +37,12 @@ const PendingPayments = () => {
     try {
       setLoading(true);
       setError(null);
-      
+
       const token = localStorage.getItem('token');
       const response = await axios.get('http://localhost:5000/api/payments/pending', {
         headers: {
-          Authorization: `Bearer ${token}`
-        }
+          Authorization: `Bearer ${token}`,
+        },
       });
 
       setPayments(response.data);
@@ -61,18 +61,24 @@ const PendingPayments = () => {
       setSuccess(null);
 
       const token = localStorage.getItem('token');
-      await axios.post(
+      const response = await axios.post(
         `http://localhost:5000/api/payments/${paymentId}/${action}`,
         {},
         {
           headers: {
-            Authorization: `Bearer ${token}`
-          }
+            Authorization: `Bearer ${token}`,
+          },
         }
       );
 
-      // Update will happen through socket events
-      setShowModal(false);
+      if (response.data.success) {
+        // Update will happen through socket events
+        setShowModal(false);
+        setSelectedPayment(null);
+        setSuccess(`Pago ${action === 'confirm' ? 'confirmado' : 'rechazado'} exitosamente`);
+      } else {
+        throw new Error(response.data.message || `Error al ${action === 'confirm' ? 'confirmar' : 'rechazar'} el pago`);
+      }
     } catch (error) {
       console.error(`Error ${action}ing payment:`, error);
       setError(`Error al ${action === 'confirm' ? 'confirmar' : 'rechazar'} el pago`);
@@ -87,14 +93,14 @@ const PendingPayments = () => {
       month: 'long',
       day: 'numeric',
       hour: '2-digit',
-      minute: '2-digit'
+      minute: '2-digit',
     });
   };
 
   const formatCurrency = (amount) => {
     return new Intl.NumberFormat('en-US', {
       style: 'currency',
-      currency: 'USD'
+      currency: 'USD',
     }).format(amount);
   };
 
@@ -103,42 +109,42 @@ const PendingPayments = () => {
     <div className="modal-overlay">
       <div className="modal-content">
         <h3>Detalles del Pago</h3>
-        
+
         <div className="payment-details">
           <div className="detail-group">
             <label>Cliente:</label>
             <p>{payment.fullName}</p>
           </div>
-          
+
           <div className="detail-group">
             <label>Email:</label>
             <p>{payment.email}</p>
           </div>
-          
+
           <div className="detail-group">
             <label>Teléfono:</label>
             <p>{payment.phoneNumber}</p>
           </div>
-          
+
           <div className="detail-group">
             <label>Método de Pago:</label>
             <p>{payment.method}</p>
           </div>
-          
+
           <div className="detail-group">
             <label>Monto:</label>
             <p>{formatCurrency(payment.totalAmountUSD)}</p>
           </div>
-          
+
           <div className="detail-group">
             <label>Números Seleccionados:</label>
             <p>{payment.selectedNumbers.join(', ')}</p>
           </div>
-          
+
           <div className="detail-group">
             <label>Comprobante de Pago:</label>
             {payment.proofOfPayment && (
-              <img 
+              <img
                 src={`http://localhost:5000${payment.proofOfPayment}`}
                 alt="Comprobante de pago"
                 className="proof-image"

@@ -1,7 +1,7 @@
 // frontend/src/pages/PaymentDetailsPage.js
 import React, { useState, useEffect } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
-import api from '../services/api';
+import { getExchangeRate } from '../services/api'; // Updated to use the correct exchange rate fetching function
 import axios from 'axios';
 import '../assets/styles/PaymentDetailsPage.css';
 
@@ -14,7 +14,9 @@ const PaymentDetailsPage = () => {
   };
 
   const [exchangeRate, setExchangeRate] = useState(null);
-  const [loading, setLoading] = useState(false);
+  const [exchangeRateLoading, setExchangeRateLoading] = useState(false); // Loading state for exchange rate
+  const [exchangeRateError, setExchangeRateError] = useState(null); // Error state for exchange rate
+  const [loading, setLoading] = useState(false); // Loading state for form submission
   const [error, setError] = useState(null);
   const [formData, setFormData] = useState({
     fullName: '',
@@ -40,6 +42,27 @@ const PaymentDetailsPage = () => {
   const ticketPrice = 10;
   const totalAmountUSD = selectedNumbers.length * ticketPrice;
 
+  // Fetch exchange rate function
+  const fetchExchangeRate = async () => {
+    setExchangeRateLoading(true);
+    setExchangeRateError(null);
+    try {
+      const result = await getExchangeRate();
+      if (result.success && result.rate) {
+        setExchangeRate(result.rate);
+      } else {
+        setExchangeRateError(result.error || 'Error fetching exchange rate.');
+        setExchangeRate(35.0); // Default fallback rate
+      }
+    } catch (error) {
+      console.error('Error fetching exchange rate:', error);
+      setExchangeRate(35.0); // Default fallback rate
+      setExchangeRateError('Error fetching exchange rate. Using default rate.');
+    } finally {
+      setExchangeRateLoading(false);
+    }
+  };
+
   useEffect(() => {
     // Redirect if no numbers selected
     if (!selectedNumbers.length) {
@@ -47,25 +70,14 @@ const PaymentDetailsPage = () => {
       return;
     }
 
-    const fetchExchangeRate = async () => {
-      try {
-        const response = await api.get('/api/v3/ticker/price?symbol=USDTVES');
-        if (response.data && response.data.price) {
-          const usdRate = parseFloat(response.data.price);
-          setExchangeRate(usdRate);
-        } else {
-          console.error('Unexpected exchange rate response:', response.data);
-          setError('Error fetching exchange rate. Using default rate.');
-          setExchangeRate(35.0); // Default fallback rate
-        }
-      } catch (error) {
-        console.error('Error fetching exchange rate:', error);
-        setError('Error fetching exchange rate. Using default rate.');
-        setExchangeRate(35.0); // Default fallback rate
-      }
-    };
-
     fetchExchangeRate();
+
+    // Fetch exchange rate every 5 minutes
+    const exchangeRateInterval = setInterval(fetchExchangeRate, 5 * 60 * 1000);
+
+    return () => {
+      clearInterval(exchangeRateInterval);
+    };
   }, [selectedNumbers, navigate]);
 
   const validateForm = () => {
@@ -81,31 +93,6 @@ const PaymentDetailsPage = () => {
 
     setValidation(newValidation);
     return Object.values(newValidation).every(Boolean);
-  };
-
-  const handleInputChange = (e) => {
-    const { name, value } = e.target;
-    setFormData({ ...formData, [name]: value });
-    // Clear error when user starts typing
-    setError(null);
-  };
-
-  const handleProofOfPaymentChange = (e) => {
-    const file = e.target.files[0];
-    if (file) {
-      // Validate file size (5MB limit)
-      if (file.size > 5 * 1024 * 1024) {
-        setError('File size must be less than 5MB');
-        return;
-      }
-      // Validate file type
-      if (!['image/jpeg', 'image/png', 'image/gif'].includes(file.type)) {
-        setError('File must be an image (JPEG, PNG, or GIF)');
-        return;
-      }
-      setFormData({ ...formData, proofOfPayment: file });
-      setError(null);
-    }
   };
 
   const handleConfirmPayment = async (e) => {
@@ -209,11 +196,6 @@ const PaymentDetailsPage = () => {
     alert('Copied to clipboard!');
   };
 
-  const getValidationClass = (fieldName) => {
-    if (formData[fieldName] === '') return '';
-    return validation[fieldName] ? 'valid' : 'invalid';
-  };
-
   return (
     <div className="payment-details-page">
       <h2>Payment Details</h2>
@@ -224,6 +206,22 @@ const PaymentDetailsPage = () => {
         {getPaymentInstructions() && (
           <div className="payment-instructions">
             <p>Amount to Pay: {method === 'Pagomovil' ? `${totalAmountBS} BS` : `$${totalAmountUSD}`}</p>
+            <p>{`$1 = ${exchangeRateLoading ? 'Loading...' : exchangeRate ? `${exchangeRate} BS` : 'Error fetching rate'}`}</p> {/* Display exchange rate */}
+            
+            {/* Display exchange rate loading indicator */}
+            {exchangeRateLoading && (
+              <div className="exchange-rate-loading">
+                Fetching latest exchange rate...
+              </div>
+            )}
+
+            {/* Display exchange rate error message */}
+            {exchangeRateError && (
+              <div className="exchange-rate-error">
+                {exchangeRateError}
+              </div>
+            )}
+
             <div className="payment-details">
               {method === 'Binance Pay' && (
                 <>
@@ -273,8 +271,7 @@ const PaymentDetailsPage = () => {
             name="fullName"
             placeholder="Full Name"
             value={formData.fullName}
-            onChange={handleInputChange}
-            className={getValidationClass('fullName')}
+            onChange={(e) => setFormData({ ...formData, fullName: e.target.value })}
             required
           />
           {!validation.fullName && (
@@ -288,8 +285,7 @@ const PaymentDetailsPage = () => {
             name="idNumber"
             placeholder="ID Number"
             value={formData.idNumber}
-            onChange={handleInputChange}
-            className={getValidationClass('idNumber')}
+            onChange={(e) => setFormData({ ...formData, idNumber: e.target.value })}
             required
           />
           {!validation.idNumber && (
@@ -303,8 +299,7 @@ const PaymentDetailsPage = () => {
             name="phoneNumber"
             placeholder="Phone Number"
             value={formData.phoneNumber}
-            onChange={handleInputChange}
-            className={getValidationClass('phoneNumber')}
+            onChange={(e) => setFormData({ ...formData, phoneNumber: e.target.value })}
             required
           />
           {!validation.phoneNumber && (
@@ -318,8 +313,7 @@ const PaymentDetailsPage = () => {
             name="email"
             placeholder="Email"
             value={formData.email}
-            onChange={handleInputChange}
-            className={getValidationClass('email')}
+            onChange={(e) => setFormData({ ...formData, email: e.target.value })}
             required
           />
           {!validation.email && (
@@ -333,8 +327,7 @@ const PaymentDetailsPage = () => {
             name="password"
             placeholder="Create Password"
             value={formData.password}
-            onChange={handleInputChange}
-            className={getValidationClass('password')}
+            onChange={(e) => setFormData({ ...formData, password: e.target.value })}
             required
           />
           {!validation.password && (
@@ -348,8 +341,7 @@ const PaymentDetailsPage = () => {
             name="confirmPassword"
             placeholder="Confirm Password"
             value={formData.confirmPassword}
-            onChange={handleInputChange}
-            className={getValidationClass('confirmPassword')}
+            onChange={(e) => setFormData({ ...formData, confirmPassword: e.target.value })}
             required
           />
           {!validation.confirmPassword && (
@@ -363,7 +355,7 @@ const PaymentDetailsPage = () => {
             <input
               type="file"
               accept="image/*"
-              onChange={handleProofOfPaymentChange}
+              onChange={(e) => setFormData({ ...formData, proofOfPayment: e.target.files[0] })}
               required
               className="file-input"
             />

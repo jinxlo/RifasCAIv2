@@ -1,7 +1,8 @@
+// src/App.js
 import React, { useEffect, useState, useCallback } from 'react';
 import { Routes, Route, Navigate, useLocation, useNavigate } from 'react-router-dom';
 import { Toaster } from 'react-hot-toast';
-import { jwtDecode } from "jwt-decode"; // Correct default import for jwtDecode
+import { jwtDecode } from "jwt-decode"; 
 
 // Layouts
 import AdminLayout from './components/layouts/AdminLayout';
@@ -167,30 +168,12 @@ const App = () => {
         <Routes>
           {/* Public Routes */}
           <Route path="/" element={<HomePage />} />
-          <Route 
-            path="/select-numbers" 
-            element={
-              <ProtectedUserRoute>
-                <SelectNumbersPage />
-              </ProtectedUserRoute>
-            } 
-          />
-          <Route 
-            path="/payment-method" 
-            element={
-              <ProtectedUserRoute>
-                <PaymentMethodPage />
-              </ProtectedUserRoute>
-            } 
-          />
-          <Route 
-            path="/payment-details" 
-            element={
-              <ProtectedUserRoute>
-                <PaymentDetailsPage />
-              </ProtectedUserRoute>
-            } 
-          />
+          <Route path="/select-numbers" element={<SelectNumbersPage />} />
+          <Route path="/payment-method" element={<PaymentMethodPage />} />
+          
+          {/* Remove ProtectedUserRoute for payment-details */}
+          <Route path="/payment-details" element={<PaymentDetailsPage />} />
+
           <Route 
             path="/payment-verification" 
             element={

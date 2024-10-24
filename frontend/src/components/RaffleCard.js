@@ -1,12 +1,13 @@
-// src/components/RaffleCard.js
 import React, { useState, useEffect, useContext, useCallback } from 'react';
 import axios from 'axios';
 import { SocketContext } from '../index';
+import { useNavigate } from 'react-router-dom'; // Import for navigation
 import { toast } from 'react-hot-toast';
 import '../assets/styles/RaffleCard.css';
 
 const RaffleCard = ({ onBuyTickets }) => {
   const { socket } = useContext(SocketContext);
+  const navigate = useNavigate(); // Use navigate for redirection
   
   const [raffleItem, setRaffleItem] = useState({
     _id: '',
@@ -53,7 +54,8 @@ const RaffleCard = ({ onBuyTickets }) => {
       if (response.data) {
         setRaffleItem(response.data);
         updateAvailableTickets(response.data);
-        toast.success('Rifa cargada exitosamente');
+        // Removed the success toast as it's not needed
+        // toast.success('Rifa cargada exitosamente');
       } else {
         const errorMsg = 'No hay rifas activas';
         setError(errorMsg);
@@ -72,7 +74,7 @@ const RaffleCard = ({ onBuyTickets }) => {
   useEffect(() => {
     fetchRaffleData();
 
-    // Definir los manejadores de eventos
+    // Define event handlers
     const handleRaffleCreated = (newRaffle) => {
       console.log('New raffle created:', newRaffle);
       setRaffleItem(newRaffle);
@@ -89,11 +91,11 @@ const RaffleCard = ({ onBuyTickets }) => {
       }
     };
 
-    // Registrar los eventos
+    // Register events
     socket.on('raffle_created', handleRaffleCreated);
     socket.on('raffle_updated', handleRaffleUpdated);
 
-    // Cleanup al desmontar el componente
+    // Cleanup when component unmounts
     return () => {
       socket.off('raffle_created', handleRaffleCreated);
       socket.off('raffle_updated', handleRaffleUpdated);
@@ -103,7 +105,7 @@ const RaffleCard = ({ onBuyTickets }) => {
   // Handle buy tickets click
   const handleBuyClick = () => {
     if (ticketsAvailable > 0) {
-      onBuyTickets(1);
+      navigate('/select-numbers'); // Navigate to select-numbers page
     } else {
       toast.error('No hay tickets disponibles');
     }

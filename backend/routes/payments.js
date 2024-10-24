@@ -289,6 +289,7 @@ module.exports = (upload, io) => {
     session.startTransaction();
 
     try {
+      // Find the payment and populate the raffle field
       const payment = await Payment.findById(req.params.id)
         .session(session);
       
@@ -299,6 +300,9 @@ module.exports = (upload, io) => {
       if (payment.status !== 'Pending') {
         throw new Error('Payment is not in pending status');
       }
+
+      // Store the raffle reference before updating
+      const raffleId = payment.raffle;
 
       // Update payment status
       payment.status = 'Rejected';
@@ -321,9 +325,9 @@ module.exports = (upload, io) => {
       );
 
       // Update raffle statistics
-      const raffle = await Raffle.findById(payment.raffle).session(session);
+      const raffle = await Raffle.findById(raffleId).session(session);
       if (raffle) {
-        raffle.reservedTickets -= payment.selectedNumbers.length;
+        raffle.reservedTickets = Math.max(0, raffle.reservedTickets - payment.selectedNumbers.length);
         await raffle.save({ session });
       }
 
@@ -336,12 +340,21 @@ module.exports = (upload, io) => {
         raffleId: payment.raffle
       });
 
+      // Send success response
       res.json({
         success: true,
-        message: 'Payment rejected successfully'
+        message: 'Payment rejected successfully',
+        payment: {
+          id: payment._id,
+          status: payment.status,
+          selectedNumbers: payment.selectedNumbers
+        }
       });
+
     } catch (error) {
+      // Abort transaction on error
       await session.abortTransaction();
+      
       console.error('Error rejecting payment:', error);
       res.status(400).json({
         success: false,

@@ -180,38 +180,33 @@ app.get('/api/test', (req, res) => {
 // -----------------------
 // Cleanup Function
 // -----------------------
-async function cleanupDatabase() {
+const cleanupDatabase = async () => {
   try {
     console.log('Cleaning up database...');
     
-    // Drop collections
-    const collections = ['tickets', 'raffles'];
-    for (const collectionName of collections) {
-      try {
-        await mongoose.connection.db.collection(collectionName).drop();
-        console.log(`Dropped collection: ${collectionName}`);
-      } catch (err) {
-        if (err.code !== 26) { // 26 is collection doesn't exist
-          console.error(`Error dropping collection ${collectionName}:`, err);
-        }
-      }
-    }
+    // Drop collections in the correct order
+    await Payment.collection.drop().catch(err => {
+      if (err.code !== 26) console.error('Error dropping payments:', err);
+    });
     
+    await Ticket.collection.drop().catch(err => {
+      if (err.code !== 26) console.error('Error dropping tickets:', err);
+    });
+    
+    await Raffle.collection.drop().catch(err => {
+      if (err.code !== 26) console.error('Error dropping raffles:', err);
+    });
+
     // Drop indexes
-    try {
-      await mongoose.model('Ticket').collection.dropIndexes();
-      console.log('Dropped all indexes on Ticket collection');
-    } catch (err) {
-      if (err.code !== 26) {
-        console.error('Error dropping indexes:', err);
-      }
-    }
-    
+    await Ticket.collection.dropIndexes();
+    await Payment.collection.dropIndexes();
+    await Raffle.collection.dropIndexes();
+
     console.log('Database cleanup completed');
   } catch (error) {
     console.error('Error during database cleanup:', error);
   }
-}
+};
 
 // -----------------------
 // Server Startup

@@ -62,7 +62,7 @@ const SelectNumbersPage = () => {
     }
 
     try {
-      // Proceed to payment page without reserving tickets
+      // Proceed to payment method page without reserving tickets
       navigate('/payment-method', { state: { selectedNumbers } });
     } catch (error) {
       console.error('Error proceeding to payment:', error);
